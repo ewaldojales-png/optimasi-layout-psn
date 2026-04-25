@@ -95,8 +95,8 @@ if st.button("🚀 Jalankan Optimasi Global", key="tombol_optimasi"):
     y = pulp.LpVariable.dicts("y", departemen, 0, panjang_lahan, pulp.LpContinuous)
     
     # Jarak absolut (x_ij, y_ij)
-    dx = pulp.LpVariable.dicts("dx", (departemen, departemen), lowbound=0, cat=pulp.LpContinous)
-    dy = pulp.LpVariable.dicts("dy", (departemen, departemen), lowbound=0, cat=pulp.LpContinous)
+    dx = pulp.LpVariable.dicts("dx", (departemen, departemen), lowBound=0, cat=pulp.LpContinuous)
+    dy = pulp.LpVariable.dicts("dy", (departemen, departemen), lowBound=0, cat=pulp.LpContinuous)
     
     # Variabel biner untuk overlap (misal: z_ij)
     # ... (Masukkkan logika constraint overlap asli dari main.py Anda di sini) ...
