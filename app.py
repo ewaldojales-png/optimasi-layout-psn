@@ -156,9 +156,15 @@ if st.button("🚀 Jalankan Optimasi Global", key="tombol_optimasi"):
     status = pulp.LpStatus[model.status]
     
     if status == 'Optimal':
-        st.success(f"✅ Optimasi Berhasil! Status: {status}")
+        st.success("✅ Optimasi Berhasil")
         
-        # 1. Tampilkan Tabel Koordinat
+        # --- BARIS BARU UNTUK MENAMPILKAN OBJECTIVE ---
+        total_cost = pulp.value(model.objective)
+        st.metric(label="Global Objective Value (Total Jarak x Bobot)",
+                  value=f"{total_cost:.4f}")
+        # ----------------------------------------------
+
+        # ... (Kode tabel res_data dan gambar layout di bawahnya tetap sama)
         res_data = []
         for i in departemen:
             res_data.append({
