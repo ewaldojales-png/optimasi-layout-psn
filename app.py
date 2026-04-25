@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import requests
+import pulp
 import itertools
 
 st.set_page_config(page_title="MILP PSN", layout="wide")
@@ -64,8 +64,25 @@ if st.button("🚀 Jalankan Optimasi Global"):
         
         with st.spinner(f"Menghitung tata letak skenario {skenario}..."):
             try:
-                res = requests.post("http://127.0.0.1:8000/solve", json=payload)
-                res_data = res.json()
+                if st.button("🚀 Jalankan Optimasi Global"):
+    # 1. Ambil data dari tabel input Streamlit
+    df_input = st.session_state["data_tabel"] 
+    
+    # 2. Inisialisasi Model PuLP (Logika dari main.py pindah ke sini)
+    model = pulp.LpProblem("Optimasi_Layout_PSN", pulp.LpMinimize)
+    
+    # ... (masukkan logika variabel keputusan x, y, dan kendala/constraints di sini) ...
+    
+    # 3. Jalankan Solver
+    model.solve(pulp.PULP_CBC_CMD(msg=0))
+    
+    # 4. Tampilkan Hasil Langsung di Layar
+    if pulp.LpStatus[model.status] == 'Optimal':
+        st.success("✅ Optimasi Berhasil!")
+        # Tampilkan koordinat baru atau penurunan jarak
+    else:
+        st.error("❌ Solusi tidak ditemukan, coba periksa batasan lahan.")
+                
                 
                 if res_data.get("status") == "Optimal":
                     st.success("Solusi Optimal Ditemukan!")
