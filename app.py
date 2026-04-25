@@ -78,7 +78,16 @@ if st.button("🚀 Jalankan Optimasi Global"):
     
                     # 4. Tampilkan Hasil Langsung di Layar
                     if pulp.LpStatus[model.status] == 'Optimal':
+
+                        res_data =[]
+                        for i in departemen:
+                            res_data.append({
+                                "Departemen": i,
+                                "X": pulp.value(x[i])
+                                "Y": pulp.value(y[i])
+                            })
                         st.success("✅ Optimasi Berhasil!")
+                        st.table(res_data) 
                         # Tampilkan koordinat baru atau penurunan jarak
                     else:
                         st.error("❌ Solusi tidak ditemukan, coba periksa batasan lahan.")
