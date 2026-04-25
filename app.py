@@ -64,7 +64,7 @@ if st.button("🚀 Jalankan Optimasi Global"):
         
         with st.spinner(f"Menghitung tata letak skenario {skenario}..."):
             try:
-                if st.button("🚀 Jalankan Optimasi Global"):
+                if st.button("🚀 Jalankan Optimasi Global", key="hitung_ulang"):
                     # 1. Ambil data dari tabel input Streamlit
                     df_input = st.session_state["data_tabel"] 
     
