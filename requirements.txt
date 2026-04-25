@@ -1,0 +1,6 @@
+streamlit
+fastapi
+uvicorn
+pulp
+requests
+pandas
