@@ -78,7 +78,7 @@ if st.button("🚀 Jalankan Optimasi Global"):
     
                     # 4. Tampilkan Hasil Langsung di Layar
                     if pulp.LpStatus[model.status] == 'Optimal':
-                    st.success("✅ Optimasi Berhasil!")
+                        st.success("✅ Optimasi Berhasil!")
         # Tampilkan koordinat baru atau penurunan jarak
     else:
         st.error("❌ Solusi tidak ditemukan, coba periksa batasan lahan.")
