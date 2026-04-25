@@ -118,8 +118,11 @@ if st.button("🚀 Jalankan Optimasi Global", key="tombol_optimasi"):
     model += pulp.lpSum(cost)
     
     # --- E. CONSTRAINTS (KENDALA) ---
+    z_bin = pulp.LpVariable.dicts("z_bin", (departemen, departemen, range(1, 5)), 0, 1, pulp.LpBinary)
+    M = 1000 # Nilai Big-M
+    
     for i in departemen:
-        # Kendala Batas Area Lahan
+        # Kendala Batas Area Lahan (Tetap seperti sebelumnya)
         model += x[i] + W_dept[i]/2 <= lebar_lahan
         model += x[i] - W_dept[i]/2 >= 0
         model += y[i] + H_dept[i]/2 <= panjang_lahan
@@ -133,10 +136,18 @@ if st.button("🚀 Jalankan Optimasi Global", key="tombol_optimasi"):
                 model += dy[i][j] >= y[i] - y[j]
                 model += dy[i][j] >= y[j] - y[i]
                 
-                # Kendala Non-Overlap (Biner)
-                # ... (Masukkan logika biner asli Anda di sini) ...
-                # Placeholder biner agar model bisa running
-                model += x[i] + W_dept[i]/2 <= x[j] - W_dept[j]/2 + 1000 * (1 - z[i][j])
+                # 2. Kendala Non-Overlap (Logika Big-M)
+                # i di sebelah kiri j
+                model += x[i] + W_dept[i]/2 <= x[j] - W_dept[j]/2 + M * (1 - z_bin[i][j][1])
+                #i di sebelah kanan j
+                model += x[i] + W_dept[i]/2 <= x[j] - W_dept[j]/2 + M * (1 - z_bin[i][j][2])
+                #i di bawah j
+                model += x[i] + W_dept[i]/2 <= x[j] - W_dept[j]/2 + M * (1 - z_bin[i][j][3])
+                #i di atas j
+                model += x[i] + W_dept[i]/2 <= x[j] - W_dept[j]/2 + M * (1 - z_bin[i][j][4])
+                
+                # Minimal satu kondisi di atas harus terpenuhi
+                model += z_bin[i][j][1] + z_bin[i][j][2] + z_bin[i][j][3] + z_bin[i][j][4] >= 1
 
     # --- F. RUN SOLVER ---
     model.solve(pulp.PULP_CBC_CMD(msg=0))
