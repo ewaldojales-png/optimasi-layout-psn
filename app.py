@@ -20,7 +20,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🏭 Sistem Pendukung Keputusan: Optimasi Tata Letak PT. PSN")
-st.markdown("Implementasi *Mixed Integer Linear Programming* (MILP) yang Stabil & Responsif")
+st.markdown("Implementasi *Mixed Integer Linear Programming* (MILP) - Anti Glitch & Stabil")
 st.divider()
 
 # ==========================================
@@ -46,7 +46,7 @@ tab1, tab2, tab3 = st.tabs(["📊 1. Master Dimensi & Parameter", "🔀 2. Matri
 with tab1:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.subheader("A. Master Fasilitas & Dimensi")
-    st.info("💡 **FITUR TAMBAH/HAPUS:** Arahkan kursor ke baris paling bawah tabel untuk memunculkan tombol `+` (Tambah Baris). Jika Anda menambah/menghapus baris di sini, Matriks di Tab 2 akan **otomatis menyesuaikan baris dan kolomnya**.")
+    st.info("💡 **FITUR TAMBAH/HAPUS:** Arahkan kursor ke baris paling bawah tabel untuk memunculkan tombol `+` (Tambah Baris). Matriks di Tab 2 akan **otomatis menyesuaikan**.")
     
     # Editor Dinamis Dimensi
     edited_df = st.data_editor(
@@ -56,8 +56,13 @@ with tab1:
         hide_index=True
     )
     
-    edited_df = edited_df.dropna(subset=["Fasilitas"])
-    dept_names = [str(n).strip() for n in edited_df["Fasilitas"].tolist() if str(n).strip() != ""]
+    # Mencegah nama fasilitas ganda/kosong (Mencegah KeyError)
+    dept_names = []
+    for n in edited_df["Fasilitas"].tolist():
+        name = str(n).strip()
+        if name != "" and name not in dept_names:
+            dept_names.append(name)
+            
     st.session_state.df_dimensi = edited_df
     st.markdown("</div>", unsafe_allow_html=True)
     
@@ -78,9 +83,8 @@ with tab1:
 
 with tab2:
     st.markdown("### Sinkronisasi Matriks Otomatis")
-    st.caption("Ketik angka dengan santai, tabel ini tidak akan me-refresh layar Anda secara tiba-tiba.")
+    st.caption("Ketik angka dengan santai, tabel ini sudah kebal terhadap glitch *refresh*.")
     
-    # --- LOGIKA ANTI GLITCH KEYBOARD HP ---
     if "arc_matrix" not in st.session_state:
         st.session_state.arc_matrix = pd.DataFrame('U', index=dept_names, columns=dept_names)
         if "Gudang Bahan Baku" in dept_names and "Packing" in dept_names:
@@ -91,20 +95,19 @@ with tab2:
     if "ftc_matrix" not in st.session_state:
         st.session_state.ftc_matrix = pd.DataFrame(0.0, index=dept_names, columns=dept_names)
 
-    # Hanya reindex (update bentuk tabel) JIKA ada fasilitas baru yang ditambah/dihapus di Tab 1
+    # Reindex hanya ketika struktur fasilitas berubah
     if "prev_dept_names" not in st.session_state or st.session_state.prev_dept_names != dept_names:
         st.session_state.arc_matrix = st.session_state.arc_matrix.reindex(index=dept_names, columns=dept_names, fill_value='U')
         st.session_state.ftc_matrix = st.session_state.ftc_matrix.reindex(index=dept_names, columns=dept_names, fill_value=0.0)
         st.session_state.prev_dept_names = dept_names
-    # ----------------------------------------
     
     col_kiri, col_kanan = st.columns(2)
     with col_kiri:
         st.markdown("<div class='card'>", unsafe_allow_html=True)
         st.subheader("Matriks ARC")
         st.caption("A, E, I, O, U, atau X")
-        # Render dari state, tapi jangan overwrite state-nya secara instan
         edited_arc = st.data_editor(st.session_state.arc_matrix, use_container_width=True, key="editor_arc")
+        st.session_state.arc_matrix = edited_arc
         st.markdown("</div>", unsafe_allow_html=True)
         
     with col_kanan:
@@ -112,6 +115,7 @@ with tab2:
         st.subheader("Matriks FTC")
         st.caption("Persentase aliran material")
         edited_ftc = st.data_editor(st.session_state.ftc_matrix, use_container_width=True, key="editor_ftc")
+        st.session_state.ftc_matrix = edited_ftc
         st.markdown("</div>", unsafe_allow_html=True)
 
 with tab3:
@@ -127,7 +131,10 @@ with tab3:
         if len(dept_names) < 2:
             st.error("Masukkan minimal 2 fasilitas pada tabel Dimensi.")
         else:
-            with st.spinner("Solver sedang merancang tata letak optimal..."):
+            with st.spinner("Solver sedang memproses algoritma optimasi kompleks..."):
+                # ==========================================
+                # MODEL OPTIMASI MATEMATIS
+                # ==========================================
                 model = pulp.LpProblem("Layout_PSN", pulp.LpMinimize)
                 
                 # Pemetaan Dimensi
@@ -145,10 +152,11 @@ with tab3:
                 dy = pulp.LpVariable.dicts("dy", (dept_names, dept_names), lowBound=0, cat=pulp.LpContinuous)
                 z = pulp.LpVariable.dicts("z", (dept_names, dept_names, range(1, 5)), 0, 1, pulp.LpBinary)
                 
-                # Big-M Ditingkatkan drastis agar tidak error Infeasible saat lahan luas
-                M = 100000 
+                # Big-M Dinamis (Menyesuaikan Lahan agar solver tidak Infeasible)
+                M = (lebar_lahan + panjang_lahan) * 10
                 
-                arc_dict = {'A': 10, 'E': 5, 'I': 3, 'O': 1, 'U': 0, 'X': -10}
+                # PERBAIKAN FATAL: 'X' tidak boleh minus di objektif, X adalah Hard Constraint murni!
+                arc_dict = {'A': 10, 'E': 5, 'I': 3, 'O': 1, 'U': 0, 'X': 0} 
                 
                 objective_terms = []
                 for i in dept_names:
@@ -163,13 +171,12 @@ with tab3:
                             kode_arc = str(edited_arc.loc[i, j]).strip().upper()
                             bobot_arc = arc_dict.get(kode_arc, 0)
                             
-                            if aliran > 0 or bobot_arc != 0:
+                            if aliran > 0 or bobot_arc > 0:
                                 objective_terms.append((aliran + bobot_arc) * (dx[i][j] + dy[i][j]))
                                 
                 model += pulp.lpSum(objective_terms)
                 
                 for i in dept_names:
-                    # Validasi batas lahan
                     model += x[i] + W[i]/2 <= lebar_lahan
                     model += x[i] - W[i]/2 >= 0
                     model += y[i] + H[i]/2 <= panjang_lahan
@@ -193,17 +200,30 @@ with tab3:
                             model += y[i] - H[i]/2 >= y[j] + H[j]/2 - M * (1 - z[i][j][4])
                             model += z[i][j][1] + z[i][j][2] + z[i][j][3] + z[i][j][4] >= 1
                             
-                            # GMP Constraints
+                            # GMP Constraints Mutlak (Linearisasi Diamond Absolute)
                             kode1 = str(edited_arc.loc[i, j]).strip().upper()
                             kode2 = str(edited_arc.loc[j, i]).strip().upper()
                             if kode1 == 'X' or kode2 == 'X':
-                                model += dx[i][j] + dy[i][j] >= batas_gmp
+                                idx_i, idx_j = dept_names.index(i), dept_names.index(j)
+                                g1 = pulp.LpVariable(f"gmp_{idx_i}_{idx_j}_1", 0, 1, pulp.LpBinary)
+                                g2 = pulp.LpVariable(f"gmp_{idx_i}_{idx_j}_2", 0, 1, pulp.LpBinary)
+                                g3 = pulp.LpVariable(f"gmp_{idx_i}_{idx_j}_3", 0, 1, pulp.LpBinary)
+                                g4 = pulp.LpVariable(f"gmp_{idx_i}_{idx_j}_4", 0, 1, pulp.LpBinary)
+                                
+                                model += (x[i] - x[j]) + (y[i] - y[j]) >= batas_gmp - M * (1 - g1)
+                                model += (x[i] - x[j]) - (y[i] - y[j]) >= batas_gmp - M * (1 - g2)
+                                model += -(x[i] - x[j]) + (y[i] - y[j]) >= batas_gmp - M * (1 - g3)
+                                model += -(x[i] - x[j]) - (y[i] - y[j]) >= batas_gmp - M * (1 - g4)
+                                model += g1 + g2 + g3 + g4 >= 1
 
                 model.solve(pulp.PULP_CBC_CMD(msg=0))
                 status = pulp.LpStatus[model.status]
                 
+                # ==========================================
+                # OUTPUT HASIL
+                # ==========================================
                 if status == 'Optimal':
-                    st.success("🎉 Solusi Global Optimum Ditemukan! Seluruh kendala GMP terpenuhi.")
+                    st.success("🎉 Solusi Global Optimum Ditemukan! Seluruh kendala GMP terpenuhi tanpa overlapping.")
                     
                     val_obj = pulp.value(model.objective)
                     total_momen = float(val_obj) if val_obj is not None else 0.0
@@ -260,10 +280,11 @@ with tab3:
                         st.subheader("💡 Analisis Skripsi")
                         st.markdown(f"Model MILP berhasil meminimalkan total beban perpindahan menjadi **{total_momen:,.2f}** "
                                     f"dengan penghematan jarak **{efisiensi:.2f}%**. "
-                                    f"Batasan mutlak GMP (**{batas_gmp} meter**) antar area Kotor dan Steril telah terpenuhi secara efektif.")
+                                    f"Batasan mutlak GMP (**{batas_gmp} meter**) antar area Kotor dan Steril telah terpenuhi secara efektif "
+                                    f"melalui linearisasi jarak *rectilinear* absolut.")
                         st.divider()
                         st.markdown("📋 **Tabel Koordinat Pusat (X, Y)**")
                         st.dataframe(pd.DataFrame(koordinat_data), hide_index=True, use_container_width=True)
                         st.markdown("</div>", unsafe_allow_html=True)
                 else:
-                    st.error("❌ Solusi Tidak Ditemukan. Cek ukuran panjang/lebar fasilitas di Tab 1, pastikan tidak ada yang lebih besar dari Batas Lahan. Atau kurangi jarak mutlak GMP jika lahan terlalu sempit.")
+                    st.error("❌ Solusi Tidak Ditemukan. Pastikan total luas fasilitas tidak melebihi Lahan, atau kurangi jarak mutlak GMP jika lahan sempit.")
