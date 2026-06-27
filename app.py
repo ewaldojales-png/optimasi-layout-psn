@@ -20,7 +20,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🏭 Sistem Pendukung Keputusan: Optimasi Tata Letak PT. PSN")
-st.markdown("Implementasi *Mixed Integer Linear Programming* (MILP) dengan Fitur Matriks Dinamis")
+st.markdown("Implementasi *Mixed Integer Linear Programming* (MILP) yang Stabil & Responsif")
 st.divider()
 
 # ==========================================
@@ -51,15 +51,13 @@ with tab1:
     # Editor Dinamis Dimensi
     edited_df = st.data_editor(
         st.session_state.df_dimensi, 
-        num_rows="dynamic",  # Fitur dinamis (tambah/hapus)
+        num_rows="dynamic", 
         use_container_width=True, 
         hide_index=True
     )
     
-    # Ambil list nama fasilitas terbaru (Pembersihan Spasi Kosong)
     edited_df = edited_df.dropna(subset=["Fasilitas"])
     dept_names = [str(n).strip() for n in edited_df["Fasilitas"].tolist() if str(n).strip() != ""]
-    
     st.session_state.df_dimensi = edited_df
     st.markdown("</div>", unsafe_allow_html=True)
     
@@ -74,16 +72,15 @@ with tab1:
     kapasitas = c4.number_input("Kapasitas Troli", value=150)
     hari = c5.number_input("Hari Kerja/Bulan", value=26)
     
-    # Perhitungan Ritasi
     expected_flow = (0.05 * (sibuk/kapasitas*hari)) + (0.75 * (normal/kapasitas*hari)) + (0.20 * (sepi/kapasitas*hari))
     st.success(f"**Expected Flow (Harapan Aliran): {expected_flow:.1f} ritasi/bulan.**")
     st.markdown("</div>", unsafe_allow_html=True)
 
 with tab2:
     st.markdown("### Sinkronisasi Matriks Otomatis")
-    st.caption("Matriks di bawah ini secara ajaib akan berbentuk persegi ($N \\times N$) menyesuaikan jumlah fasilitas di Tab 1. Silakan ubah angka dan kode kedekatannya.")
+    st.caption("Ketik angka dengan santai, tabel ini tidak akan me-refresh layar Anda secara tiba-tiba.")
     
-    # Inisialisasi Matriks jika kosong
+    # --- LOGIKA ANTI GLITCH KEYBOARD HP ---
     if "arc_matrix" not in st.session_state:
         st.session_state.arc_matrix = pd.DataFrame('U', index=dept_names, columns=dept_names)
         if "Gudang Bahan Baku" in dept_names and "Packing" in dept_names:
@@ -93,26 +90,28 @@ with tab2:
             
     if "ftc_matrix" not in st.session_state:
         st.session_state.ftc_matrix = pd.DataFrame(0.0, index=dept_names, columns=dept_names)
-    
-    # REINDEX: Menambah baris/kolom baru otomatis dengan nilai default
-    current_arc = st.session_state.arc_matrix.reindex(index=dept_names, columns=dept_names, fill_value='U')
-    current_ftc = st.session_state.ftc_matrix.reindex(index=dept_names, columns=dept_names, fill_value=0.0)
+
+    # Hanya reindex (update bentuk tabel) JIKA ada fasilitas baru yang ditambah/dihapus di Tab 1
+    if "prev_dept_names" not in st.session_state or st.session_state.prev_dept_names != dept_names:
+        st.session_state.arc_matrix = st.session_state.arc_matrix.reindex(index=dept_names, columns=dept_names, fill_value='U')
+        st.session_state.ftc_matrix = st.session_state.ftc_matrix.reindex(index=dept_names, columns=dept_names, fill_value=0.0)
+        st.session_state.prev_dept_names = dept_names
+    # ----------------------------------------
     
     col_kiri, col_kanan = st.columns(2)
     with col_kiri:
         st.markdown("<div class='card'>", unsafe_allow_html=True)
         st.subheader("Matriks ARC")
         st.caption("A, E, I, O, U, atau X")
-        edited_arc = st.data_editor(current_arc, use_container_width=True)
-        st.session_state.arc_matrix = edited_arc
+        # Render dari state, tapi jangan overwrite state-nya secara instan
+        edited_arc = st.data_editor(st.session_state.arc_matrix, use_container_width=True, key="editor_arc")
         st.markdown("</div>", unsafe_allow_html=True)
         
     with col_kanan:
         st.markdown("<div class='card'>", unsafe_allow_html=True)
         st.subheader("Matriks FTC")
         st.caption("Persentase aliran material")
-        edited_ftc = st.data_editor(current_ftc, use_container_width=True)
-        st.session_state.ftc_matrix = edited_ftc
+        edited_ftc = st.data_editor(st.session_state.ftc_matrix, use_container_width=True, key="editor_ftc")
         st.markdown("</div>", unsafe_allow_html=True)
 
 with tab3:
@@ -129,12 +128,9 @@ with tab3:
             st.error("Masukkan minimal 2 fasilitas pada tabel Dimensi.")
         else:
             with st.spinner("Solver sedang merancang tata letak optimal..."):
-                # ==========================================
-                # MODEL OPTIMASI
-                # ==========================================
                 model = pulp.LpProblem("Layout_PSN", pulp.LpMinimize)
                 
-                # Mapping Dimensi 
+                # Pemetaan Dimensi
                 W = {}
                 H = {}
                 for _, row in edited_df.iterrows():
@@ -143,17 +139,17 @@ with tab3:
                         W[nm] = float(row["P (m)"])
                         H[nm] = float(row["L (m)"])
                 
-                # Variabel Keputusan
                 x = pulp.LpVariable.dicts("x", dept_names, lowBound=0, upBound=lebar_lahan, cat=pulp.LpContinuous)
                 y = pulp.LpVariable.dicts("y", dept_names, lowBound=0, upBound=panjang_lahan, cat=pulp.LpContinuous)
                 dx = pulp.LpVariable.dicts("dx", (dept_names, dept_names), lowBound=0, cat=pulp.LpContinuous)
                 dy = pulp.LpVariable.dicts("dy", (dept_names, dept_names), lowBound=0, cat=pulp.LpContinuous)
                 z = pulp.LpVariable.dicts("z", (dept_names, dept_names, range(1, 5)), 0, 1, pulp.LpBinary)
-                M = 1000
+                
+                # Big-M Ditingkatkan drastis agar tidak error Infeasible saat lahan luas
+                M = 100000 
                 
                 arc_dict = {'A': 10, 'E': 5, 'I': 3, 'O': 1, 'U': 0, 'X': -10}
                 
-                # Fungsi Tujuan
                 objective_terms = []
                 for i in dept_names:
                     for j in dept_names:
@@ -172,8 +168,8 @@ with tab3:
                                 
                 model += pulp.lpSum(objective_terms)
                 
-                # Constraints (Kendala)
                 for i in dept_names:
+                    # Validasi batas lahan
                     model += x[i] + W[i]/2 <= lebar_lahan
                     model += x[i] - W[i]/2 >= 0
                     model += y[i] + H[i]/2 <= panjang_lahan
@@ -203,20 +199,14 @@ with tab3:
                             if kode1 == 'X' or kode2 == 'X':
                                 model += dx[i][j] + dy[i][j] >= batas_gmp
 
-                # Jalankan Solver
                 model.solve(pulp.PULP_CBC_CMD(msg=0))
                 status = pulp.LpStatus[model.status]
                 
-                # ==========================================
-                # OUTPUT HASIL
-                # ==========================================
                 if status == 'Optimal':
                     st.success("🎉 Solusi Global Optimum Ditemukan! Seluruh kendala GMP terpenuhi.")
                     
-                    # PENGAMAN ERROR NONETYPE
                     val_obj = pulp.value(model.objective)
                     total_momen = float(val_obj) if val_obj is not None else 0.0
-                    
                     momen_eksisting = 65641.5
                     efisiensi = ((momen_eksisting - total_momen) / momen_eksisting) * 100 if total_momen < momen_eksisting else 0
                     
@@ -246,8 +236,8 @@ with tab3:
                             
                             color = colors[idx % len(colors)]
                             d_lower = d.lower()
-                            if "gudang bahan baku" in d_lower or "giling" in d_lower: color = "#FCA5A5" # Kotor
-                            if "packing" in d_lower or "finish good" in d_lower: color = "#6EE7B7" # Steril
+                            if "gudang bahan baku" in d_lower or "giling" in d_lower: color = "#FCA5A5" 
+                            if "packing" in d_lower or "finish good" in d_lower: color = "#6EE7B7" 
                             
                             rect = patches.Rectangle((bx, by), w, h, linewidth=1.5, edgecolor='#1F2937', facecolor=color, alpha=0.9)
                             ax.add_patch(rect)
@@ -276,4 +266,4 @@ with tab3:
                         st.dataframe(pd.DataFrame(koordinat_data), hide_index=True, use_container_width=True)
                         st.markdown("</div>", unsafe_allow_html=True)
                 else:
-                    st.error("❌ Solusi Tidak Ditemukan. Batas lahan terlalu kecil untuk menampung seluruh fasilitas atau syarat jarak GMP (15m) tidak bisa dipenuhi.")
+                    st.error("❌ Solusi Tidak Ditemukan. Cek ukuran panjang/lebar fasilitas di Tab 1, pastikan tidak ada yang lebih besar dari Batas Lahan. Atau kurangi jarak mutlak GMP jika lahan terlalu sempit.")
