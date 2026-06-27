@@ -115,7 +115,21 @@ with tab2:
     with col_kiri:
         st.markdown("<div class='card'>", unsafe_allow_html=True)
         st.subheader("Matriks ARC")
-        st.caption("Ketik: A, E, I, O, U, atau X")
+        
+        # --- PENAMBAHAN PANDUAN KODE ARC (UI BARU) ---
+        st.markdown("""
+        <div style="font-size: 13px; margin-bottom: 12px; padding: 12px; background-color: #F8FAFC; border-left: 4px solid #3B82F6; border-radius: 5px;">
+            <b>Panduan Kode & Pembobotan Otomatis:</b><br>
+            <span style="color:#15803D; font-weight:bold;">A</span> : Mutlak Perlu (Bobot +10)<br>
+            <span style="color:#22C55E; font-weight:bold;">E</span> : Sangat Penting (Bobot +5)<br>
+            <span style="color:#EAB308; font-weight:bold;">I</span> : Penting (Bobot +3)<br>
+            <span style="color:#3B82F6; font-weight:bold;">O</span> : Kedekatan Biasa (Bobot +1)<br>
+            <span style="color:#6B7280; font-weight:bold;">U</span> : Tidak Penting (Bobot +0)<br>
+            <span style="color:#EF4444; font-weight:bold;">X</span> : Dilarang (Otomatis memicu syarat Jarak GMP)
+        </div>
+        """, unsafe_allow_html=True)
+        # ---------------------------------------------
+        
         # Editor ini menyimpan hasil ketikan ke 'last_arc' tanpa memutar ulang 'base_arc'
         edited_arc = st.data_editor(st.session_state.base_arc, use_container_width=True, key="editor_arc")
         st.session_state.last_arc = edited_arc
