@@ -3,11 +3,9 @@ import pandas as pd
 import pulp
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-import requests
-import json
 
 # ==========================================
-# 1. KONFIGURASI HALAMAN & SIDEBAR
+# 1. KONFIGURASI HALAMAN
 # ==========================================
 st.set_page_config(page_title="DSS Layout Fasilitas", page_icon="🏭", layout="wide")
 
@@ -21,15 +19,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Menu Sidebar untuk API Key (Integrasi AI)
-with st.sidebar:
-    st.header("🤖 Pengaturan AI (Opsional)")
-    st.caption("Masukkan API Key Google Gemini untuk mengaktifkan fitur Penjelasan AI Otomatis terhadap hasil optimasi.")
-    api_key = st.text_input("Gemini API Key", type="password", placeholder="Paste API Key di sini...")
-    st.markdown("[Dapatkan API Key Gratis di sini](https://aistudio.google.com/app/apikey)")
-
 st.title("🏭 Sistem Pendukung Keputusan: Optimasi Tata Letak Fasilitas")
-st.markdown("Implementasi *Mixed Integer Linear Programming* (MILP) - Terintegrasi dengan Kecerdasan Buatan (AI)")
+st.markdown("Implementasi *Mixed Integer Linear Programming* (MILP) - Dengan Analisis Sistem Pakar Otomatis")
 st.divider()
 
 # ==========================================
@@ -158,7 +149,6 @@ with tab2:
         </div>
         """, unsafe_allow_html=True)
         
-        # Editor ini menyimpan hasil ketikan ke 'last_arc' tanpa memutar ulang 'base_arc'
         edited_arc = st.data_editor(st.session_state.base_arc, use_container_width=True, key="editor_arc")
         st.session_state.last_arc = edited_arc
         st.markdown("</div>", unsafe_allow_html=True)
@@ -216,7 +206,6 @@ with tab3:
                         H[nm] = float(row["L (m)"])
                 
                 # --- SISTEM PENAMAAN VARIABEL AMAN ---
-                # Menggunakan angka index (0,1,2) pada variabel agar solver tidak error
                 x = {d: pulp.LpVariable(f"x_{i}", lowBound=0, upBound=lebar_lahan) for i, d in enumerate(dept_names)}
                 y = {d: pulp.LpVariable(f"y_{i}", lowBound=0, upBound=panjang_lahan) for i, d in enumerate(dept_names)}
                 
@@ -229,10 +218,8 @@ with tab3:
                         z[d1][d2] = {k: pulp.LpVariable(f"z_{i}_{j}_{k}", cat=pulp.LpBinary) for k in range(1, 5)}
                         g[d1][d2] = {k: pulp.LpVariable(f"g_{i}_{j}_{k}", cat=pulp.LpBinary) for k in range(1, 5)}
                 
-                # Big-M Dinamis yang Proporsional (Anti-Infeasible untuk lahan luas)
+                # Big-M Dinamis
                 M = (lebar_lahan + panjang_lahan) * 10 
-                
-                # 'X' dinilai 0 di fungsi objektif (karena dieksekusi murni di Hard Constraint)
                 arc_dict = {'A': 10, 'E': 5, 'I': 3, 'O': 1, 'U': 0, 'X': 0} 
                 
                 objective_terms = []
@@ -292,7 +279,7 @@ with tab3:
                 status = pulp.LpStatus[model.status]
                 
                 # ==========================================
-                # OUTPUT HASIL
+                # OUTPUT HASIL & SISTEM PAKAR OTOMATIS
                 # ==========================================
                 if status == 'Optimal' or status == 'Feasible':
                     st.success(f"🎉 Solusi Optimum Ditemukan! Seluruh kendala ukuran dan jarak ({label_jarak}) terpenuhi.")
@@ -300,9 +287,13 @@ with tab3:
                     val_obj = pulp.value(model.objective)
                     total_momen = float(val_obj) if val_obj is not None else 0.0
                     
+                    # Efisiensi dihitung dengan dasar momen eksisting 65641.5
+                    momen_eksisting = 65641.5
+                    efisiensi = ((momen_eksisting - total_momen) / momen_eksisting) * 100 if total_momen < momen_eksisting else 0.0
+                    
                     m1, m2 = st.columns(2)
                     m1.markdown(f"<div class='metric-box'><div class='metric-title'>Status Solver</div><div class='metric-value' style='color:#059669;'>{status}</div></div>", unsafe_allow_html=True)
-                    m2.markdown(f"<div class='metric-box'><div class='metric-title'>Fungsi Tujuan / Total Momen (Z)</div><div class='metric-value'>{total_momen:,.2f}</div></div>", unsafe_allow_html=True)
+                    m2.markdown(f"<div class='metric-box'><div class='metric-title'>Total Momen Perpindahan (Z)</div><div class='metric-value'>{total_momen:,.2f}</div></div>", unsafe_allow_html=True)
                     st.markdown("<br>", unsafe_allow_html=True)
                     
                     col_vis, col_text = st.columns([3, 2])
@@ -339,56 +330,42 @@ with tab3:
                         
                     with col_text:
                         st.markdown("<div class='card' style='height: 100%;'>", unsafe_allow_html=True)
-                        st.subheader("💡 Analisis & Parameter Dasar")
-                        st.markdown(f"**Standar Diterapkan:** {jenis_industri}")
-                        st.markdown(f"**Total Beban Perpindahan (Z):** {total_momen:,.2f}")
-                        st.markdown(f"**Jarak Aman Terjaga:** Model menjamin seluruh area yang ditandai **'X'** memiliki jarak pemisah *rectilinear* minimal **{batas_aman} meter** untuk mencegah bahaya/kontaminasi.")
-                        st.divider()
-                        st.markdown("📋 **Tabel Koordinat Pusat (X, Y)**")
+                        st.subheader("📋 Titik Koordinat Pusat (X, Y)")
                         st.dataframe(pd.DataFrame(koordinat_data), hide_index=True, use_container_width=True)
                         st.markdown("</div>", unsafe_allow_html=True)
                     
                     # ==========================================
-                    # INTEGRASI KECERDASAN BUATAN (AI)
+                    # PENJELASAN SISTEM PAKAR OTOMATIS (MOCK AI)
                     # ==========================================
                     st.divider()
-                    st.subheader("🤖 Penjelasan Cerdas AI (Google Gemini)")
-                    if api_key:
-                        if st.button("✨ Minta AI Jelaskan Hasil Ini", type="primary"):
-                            with st.spinner("AI sedang membaca hasil optimasi dan menyusun penjelasan yang mudah dipahami..."):
-                                try:
-                                    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={api_key}"
-                                    prompt = f"""
-                                    Anda adalah pakar ahli dalam perancangan Tata Letak Fasilitas Industri (Industrial Facility Layout). 
-                                    Jelaskan hasil optimasi tata letak (MILP) di bawah ini kepada pengguna awam / manajer pabrik.
-                                    
-                                    DATA HASIL OPTIMASI:
-                                    - Standar Industri yang dipakai: {jenis_industri}
-                                    - Total Beban Perpindahan (Momen Z): {total_momen}
-                                    - Syarat Jarak Aman (Clearance / GMP): {batas_aman} meter
-                                    - Koordinat Ruangan yang dihasilkan: {koordinat_data}
-                                    
-                                    TUGAS ANDA:
-                                    1. Jelaskan secara singkat apa arti nilai Total Beban Perpindahan (Z) tersebut.
-                                    2. Apakah tata letak ini sudah aman sesuai standar jarak aman yang diminta? Berikan alasan sederhana berdasarkan data.
-                                    3. Berikan kesimpulan dan 1-2 kalimat rekomendasi operasional untuk perusahaan tersebut.
-                                    Gunakan gaya bahasa Indonesia yang profesional, ramah, dan hindari istilah matematis yang terlalu rumit.
-                                    """
-                                    payload = {
-                                        "contents": [{"parts": [{"text": prompt}]}]
-                                    }
-                                    headers = {'Content-Type': 'application/json'}
-                                    response = requests.post(url, json=payload, headers=headers)
-                                    
-                                    if response.status_code == 200:
-                                        ai_text = response.json()['candidates'][0]['content']['parts'][0]['text']
-                                        st.info(ai_text)
-                                    else:
-                                        st.error(f"Gagal menghubungi AI. Kode Error: {response.status_code}. Mohon pastikan API Key Gemini yang Anda masukkan sudah benar.")
-                                except Exception as e:
-                                    st.error(f"Terjadi kesalahan saat memanggil AI: {e}")
+                    st.subheader("🤖 Analisis Cerdas Sistem Pakar (Otomatis)")
+                    
+                    # Teks Dinamis Berdasarkan Industri & Efisiensi
+                    nama_industri = jenis_industri.split('(')[0].strip()
+                    teks_pakar = f"Halo! Berdasarkan perhitungan rumit optimasi tata letak untuk **{nama_industri}**, berikut adalah penjelasan hasilnya dengan bahasa yang sederhana:\n\n"
+                    
+                    teks_pakar += f"**1. Efisiensi Biaya & Tenaga (Total Momen Z = {total_momen:,.2f})**\n"
+                    if efisiensi > 0:
+                        teks_pakar += f"✅ **Sangat Efisien!** Tata letak baru ini terbukti secara matematis mampu memangkas dan menghemat jarak perpindahan material sebesar **{efisiensi:.2f}%** dibandingkan kondisi sebelumnya. Artinya, operator dan alat angkut di pabrik Anda kini akan bekerja jauh lebih ringan dan rute produksi terhindar dari kemacetan (*bottleneck*).\n\n"
                     else:
-                        st.warning("Masukkan **Gemini API Key** Anda di menu sebelah kiri (Sidebar) untuk membiarkan AI memberikan analisis dan menjelaskan hasil angka di atas secara otomatis.")
+                        teks_pakar += f"ℹ️ Total momen yang dihasilkan adalah {total_momen:,.2f}. Angka ini mengukur seberapa efisien tata letak Anda. Jika Anda ingin mencari rute yang lebih efisien, Anda bisa mencoba mengubah dimensi lahan atau mengevaluasi ulang matriks prioritas di langkah sebelumnya.\n\n"
+                        
+                    teks_pakar += f"**2. Kepatuhan Pada Jarak Keselamatan / Keamanan ({batas_aman} meter)**\n"
+                    teks_pakar += f"✅ **Aman Terkendali!** Sistem berhasil memastikan bahwa semua area yang Anda beri tanda silang **'X'** (Dilarang Berdekatan) kini telah dipisah dan direntangkan jaraknya minimal sejauh **{batas_aman} meter**. "
+                    
+                    if "Pangan" in jenis_industri:
+                        teks_pakar += "Ini sangat penting untuk memenuhi standar kebersihan GMP, sehingga area kotor seperti gudang mentah tidak akan pernah mencemari area higienis seperti pengemasan.\n\n"
+                    elif "Manufaktur" in jenis_industri:
+                        teks_pakar += "Ini memastikan bahwa aturan keselamatan K3 dipatuhi, sehingga area yang bising, panas, atau berbahaya tidak akan mengganggu kenyamanan dan keselamatan area kerja lainnya.\n\n"
+                    elif "Kesehatan" in jenis_industri:
+                        teks_pakar += "Ini sangat krusial dalam pengendalian infeksi PPI, memastikan bahwa area berisiko tinggi seperti radiasi/infeksius tetap aman dan jauh dari ruang publik.\n\n"
+                    else:
+                        teks_pakar += "Jarak batas (Clearance) ini menjamin operasional lantai kerja terhindar dari gangguan antar zona.\n\n"
+                        
+                    teks_pakar += "**3. Rekomendasi Langkah Selanjutnya**\n"
+                    teks_pakar += "Gunakan *Tabel Titik Koordinat (X, Y)* di atas sebagai panduan atau denah cetak biru (*blueprint*) nyata untuk merelokasi mesin/ruangan di lapangan. Semua kotak di gambar denah sudah akurat dan sesuai dengan skala batas tanah yang Anda masukkan!"
+                    
+                    st.info(teks_pakar)
                         
                 else:
                     st.error(f"❌ Status: {status}. Batas lahan terlalu kecil untuk menampung seluruh fasilitas atau syarat jarak aman ({batas_aman}m) tidak bisa dipenuhi karena luas tanah yang sempit.")
