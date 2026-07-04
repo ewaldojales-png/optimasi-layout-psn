@@ -3,9 +3,11 @@ import pandas as pd
 import pulp
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import requests
+import json
 
 # ==========================================
-# 1. KONFIGURASI HALAMAN
+# 1. KONFIGURASI HALAMAN & SIDEBAR
 # ==========================================
 st.set_page_config(page_title="DSS Layout Fasilitas", page_icon="🏭", layout="wide")
 
@@ -19,8 +21,15 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Menu Sidebar untuk API Key (Integrasi AI)
+with st.sidebar:
+    st.header("🤖 Pengaturan AI (Opsional)")
+    st.caption("Masukkan API Key Google Gemini untuk mengaktifkan fitur Penjelasan AI Otomatis terhadap hasil optimasi.")
+    api_key = st.text_input("Gemini API Key", type="password", placeholder="Paste API Key di sini...")
+    st.markdown("[Dapatkan API Key Gratis di sini](https://aistudio.google.com/app/apikey)")
+
 st.title("🏭 Sistem Pendukung Keputusan: Optimasi Tata Letak Fasilitas")
-st.markdown("Implementasi *Mixed Integer Linear Programming* (MILP) - Universal & Terintegrasi")
+st.markdown("Implementasi *Mixed Integer Linear Programming* (MILP) - Terintegrasi dengan Kecerdasan Buatan (AI)")
 st.divider()
 
 # ==========================================
@@ -159,8 +168,8 @@ with tab2:
         st.subheader("Matriks FTC (Kuantitatif)")
         st.markdown("""
         <div style="font-size: 13px; margin-bottom: 12px; padding: 12px; background-color: #F8FAFC; border-left: 4px solid #F59E0B; border-radius: 5px;">
-            <b>Persentase Aliran Material:</b><br>
-            Masukkan angka (contoh: 0.5 untuk 50%, atau 1 untuk 100%). Angka ini akan dikalikan otomatis dengan <i>Expected Flow</i>.
+            <b>Persentase Aliran Material & Jarak:</b><br>
+            Masukkan angka (contoh: 0.5 untuk 50%, atau 1 untuk 100%). Anda juga dapat <b>masukkan angka jarak antar stasiun atau area kerja</b>. Angka ini akan dikalikan otomatis dengan <i>Expected Flow</i> untuk menghasilkan Total Beban Perpindahan (Z).
         </div>
         """, unsafe_allow_html=True)
         
@@ -330,7 +339,7 @@ with tab3:
                         
                     with col_text:
                         st.markdown("<div class='card' style='height: 100%;'>", unsafe_allow_html=True)
-                        st.subheader("💡 Analisis & Parameter")
+                        st.subheader("💡 Analisis & Parameter Dasar")
                         st.markdown(f"**Standar Diterapkan:** {jenis_industri}")
                         st.markdown(f"**Total Beban Perpindahan (Z):** {total_momen:,.2f}")
                         st.markdown(f"**Jarak Aman Terjaga:** Model menjamin seluruh area yang ditandai **'X'** memiliki jarak pemisah *rectilinear* minimal **{batas_aman} meter** untuk mencegah bahaya/kontaminasi.")
@@ -338,5 +347,48 @@ with tab3:
                         st.markdown("📋 **Tabel Koordinat Pusat (X, Y)**")
                         st.dataframe(pd.DataFrame(koordinat_data), hide_index=True, use_container_width=True)
                         st.markdown("</div>", unsafe_allow_html=True)
+                    
+                    # ==========================================
+                    # INTEGRASI KECERDASAN BUATAN (AI)
+                    # ==========================================
+                    st.divider()
+                    st.subheader("🤖 Penjelasan Cerdas AI (Google Gemini)")
+                    if api_key:
+                        if st.button("✨ Minta AI Jelaskan Hasil Ini", type="primary"):
+                            with st.spinner("AI sedang membaca hasil optimasi dan menyusun penjelasan yang mudah dipahami..."):
+                                try:
+                                    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={api_key}"
+                                    prompt = f"""
+                                    Anda adalah pakar ahli dalam perancangan Tata Letak Fasilitas Industri (Industrial Facility Layout). 
+                                    Jelaskan hasil optimasi tata letak (MILP) di bawah ini kepada pengguna awam / manajer pabrik.
+                                    
+                                    DATA HASIL OPTIMASI:
+                                    - Standar Industri yang dipakai: {jenis_industri}
+                                    - Total Beban Perpindahan (Momen Z): {total_momen}
+                                    - Syarat Jarak Aman (Clearance / GMP): {batas_aman} meter
+                                    - Koordinat Ruangan yang dihasilkan: {koordinat_data}
+                                    
+                                    TUGAS ANDA:
+                                    1. Jelaskan secara singkat apa arti nilai Total Beban Perpindahan (Z) tersebut.
+                                    2. Apakah tata letak ini sudah aman sesuai standar jarak aman yang diminta? Berikan alasan sederhana berdasarkan data.
+                                    3. Berikan kesimpulan dan 1-2 kalimat rekomendasi operasional untuk perusahaan tersebut.
+                                    Gunakan gaya bahasa Indonesia yang profesional, ramah, dan hindari istilah matematis yang terlalu rumit.
+                                    """
+                                    payload = {
+                                        "contents": [{"parts": [{"text": prompt}]}]
+                                    }
+                                    headers = {'Content-Type': 'application/json'}
+                                    response = requests.post(url, json=payload, headers=headers)
+                                    
+                                    if response.status_code == 200:
+                                        ai_text = response.json()['candidates'][0]['content']['parts'][0]['text']
+                                        st.info(ai_text)
+                                    else:
+                                        st.error(f"Gagal menghubungi AI. Kode Error: {response.status_code}. Mohon pastikan API Key Gemini yang Anda masukkan sudah benar.")
+                                except Exception as e:
+                                    st.error(f"Terjadi kesalahan saat memanggil AI: {e}")
+                    else:
+                        st.warning("Masukkan **Gemini API Key** Anda di menu sebelah kiri (Sidebar) untuk membiarkan AI memberikan analisis dan menjelaskan hasil angka di atas secara otomatis.")
+                        
                 else:
                     st.error(f"❌ Status: {status}. Batas lahan terlalu kecil untuk menampung seluruh fasilitas atau syarat jarak aman ({batas_aman}m) tidak bisa dipenuhi karena luas tanah yang sempit.")
