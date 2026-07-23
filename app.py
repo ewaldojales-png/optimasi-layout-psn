@@ -24,18 +24,13 @@ st.markdown("Implementasi *Mixed Integer Linear Programming* (MILP) - Dengan Ana
 st.divider()
 
 # ==========================================
-# 2. INISIALISASI DATA DEFAULT (TEMPLATE)
+# 2. INISIALISASI DATA DEFAULT (KOSONG)
 # ==========================================
+# Dibuat 2 baris kosong agar pengguna tahu di mana harus mengetik
 if "df_dimensi" not in st.session_state:
     st.session_state.df_dimensi = pd.DataFrame([
-        {"Fasilitas": "Gudang Bahan Baku", "P (m)": 8.0, "L (m)": 3.5},
-        {"Fasilitas": "R. Giling & Adonan", "P (m)": 6.7, "L (m)": 4.6},
-        {"Fasilitas": "R. Pencetakan", "P (m)": 20.0, "L (m)": 7.0},
-        {"Fasilitas": "R. Toping", "P (m)": 8.0, "L (m)": 4.0},
-        {"Fasilitas": "Pengukusan", "P (m)": 12.0, "L (m)": 5.0},
-        {"Fasilitas": "Penirisan", "P (m)": 12.0, "L (m)": 7.0},
-        {"Fasilitas": "Packing", "P (m)": 4.0, "L (m)": 4.0},
-        {"Fasilitas": "Gudang Finish Good", "P (m)": 6.2, "L (m)": 3.0},
+        {"Fasilitas": "", "P (m)": 0.0, "L (m)": 0.0},
+        {"Fasilitas": "", "P (m)": 0.0, "L (m)": 0.0}
     ])
 
 # ==========================================
@@ -59,7 +54,7 @@ with tab1:
 
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.subheader("B. Master Fasilitas & Dimensi")
-    st.info("💡 **FITUR TAMBAH/HAPUS:** Arahkan kursor ke baris paling bawah tabel untuk memunculkan tombol `+` (Tambah Baris). Matriks di Tab 2 akan **otomatis menyesuaikan** ukurannya.")
+    st.info("💡 **FITUR TAMBAH/HAPUS:** Ketik nama fasilitas pada baris kosong. Arahkan kursor ke baris paling bawah tabel untuk memunculkan tombol `+` (Tambah Baris). Matriks di Tab 2 akan **otomatis menyesuaikan** ukurannya.")
     
     # Editor Dinamis Dimensi
     edited_df = st.data_editor(
@@ -80,31 +75,46 @@ with tab1:
     st.markdown("</div>", unsafe_allow_html=True)
     
     st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.subheader("C. Parameter Aliran Stokastik (Expected Flow)")
+    st.subheader("C. Parameter Skenario Aliran Stokastik")
+    st.caption("Atur Probabilitas (Peluang) dan Nilai Frekuensi Produksi sesuai dengan kondisi lapangan yang dianalisis.")
+    
     c1, c2, c3 = st.columns(3)
-    sibuk = c1.number_input("Prod. Sibuk (Prob. 0.05)", value=5928, step=100)
-    normal = c2.number_input("Prod. Normal (Prob. 0.75)", value=4560, step=100)
-    sepi = c3.number_input("Prod. Sepi (Prob. 0.20)", value=3192, step=100)
+    with c1:
+        prob_sibuk = st.number_input("Peluang Kondisi Sibuk", value=0.05, min_value=0.0, max_value=1.0, step=0.05, help="Angka antara 0 hingga 1")
+        prod_sibuk = st.number_input("Frekuensi Produksi Sibuk", value=0, step=100)
+    with c2:
+        prob_normal = st.number_input("Peluang Kondisi Normal", value=0.75, min_value=0.0, max_value=1.0, step=0.05, help="Angka antara 0 hingga 1")
+        prod_normal = st.number_input("Frekuensi Produksi Normal", value=0, step=100)
+    with c3:
+        prob_sepi = st.number_input("Peluang Kondisi Sepi", value=0.20, min_value=0.0, max_value=1.0, step=0.05, help="Angka antara 0 hingga 1")
+        prod_sepi = st.number_input("Frekuensi Produksi Sepi", value=0, step=100)
+    
+    # Validasi total probabilitas
+    total_prob = prob_sibuk + prob_normal + prob_sepi
+    if abs(total_prob - 1.0) > 0.001:
+        st.warning(f"⚠️ **Perhatian:** Total probabilitas saat ini adalah **{total_prob:.2f}**. Umumnya total probabilitas dari seluruh skenario harus berjumlah **1.00** (100%).")
+    
+    st.divider()
     
     c4, c5 = st.columns(2)
-    kapasitas = c4.number_input("Kapasitas Alat Angkut (Troli/Forklift)", value=150)
-    hari = c5.number_input("Hari Kerja/Bulan", value=26)
+    kapasitas = c4.number_input("Kapasitas Alat Angkut (Troli/Forklift)", value=100)
+    hari = c5.number_input("Hari Kerja/Bulan", value=20)
     
-    expected_flow = (0.05 * (sibuk/kapasitas*hari)) + (0.75 * (normal/kapasitas*hari)) + (0.20 * (sepi/kapasitas*hari))
-    st.success(f"**Expected Flow (Harapan Aliran): {expected_flow:.1f} ritasi/bulan.**")
+    # Perhitungan Expected Flow dengan Probabilitas Kustom
+    if kapasitas > 0:
+        expected_flow = (prob_sibuk * (prod_sibuk/kapasitas*hari)) + (prob_normal * (prod_normal/kapasitas*hari)) + (prob_sepi * (prod_sepi/kapasitas*hari))
+    else:
+        expected_flow = 0.0
+        
+    st.success(f"**Expected Flow (Harapan Aliran): {expected_flow:.2f} ritasi/bulan.**")
     st.markdown("</div>", unsafe_allow_html=True)
 
 with tab2:
     st.markdown("### Sinkronisasi Matriks Otomatis")
-    st.caption("Ketik angka/huruf dengan santai, tabel ini sudah memiliki *state memory* (Anti-Glitch Keyboard HP).")
+    st.caption("Matriks ini akan otomatis memperluas dirinya saat Anda menambahkan nama fasilitas di Tab 1.")
     
     if "base_arc" not in st.session_state:
         st.session_state.base_arc = pd.DataFrame('U', index=dept_names, columns=dept_names)
-        # Template Default
-        if "Gudang Bahan Baku" in dept_names and "Packing" in dept_names:
-            st.session_state.base_arc.loc["Gudang Bahan Baku", "Packing"] = 'X'
-        if "Gudang Bahan Baku" in dept_names and "Gudang Finish Good" in dept_names:
-            st.session_state.base_arc.loc["Gudang Bahan Baku", "Gudang Finish Good"] = 'X'
             
     if "base_ftc" not in st.session_state:
         st.session_state.base_ftc = pd.DataFrame(0.0, index=dept_names, columns=dept_names)
@@ -188,7 +198,7 @@ with tab3:
     
     if st.button("🚀 JALANKAN OPTIMASI MILP", type="primary", use_container_width=True):
         if len(dept_names) < 2:
-            st.error("Masukkan minimal 2 fasilitas pada tabel Dimensi di Tab 1.")
+            st.error("Gagal menjalankan Optimasi: Masukkan minimal 2 nama fasilitas beserta ukurannya pada tabel Dimensi di Tab 1.")
         else:
             with st.spinner("Mesin Solver (PuLP/CBC) sedang mencari koordinat global optimum..."):
                 # ==========================================
@@ -206,6 +216,7 @@ with tab3:
                         H[nm] = float(row["L (m)"])
                 
                 # --- SISTEM PENAMAAN VARIABEL AMAN ---
+                # Menggunakan angka index (0,1,2) pada variabel agar solver tidak error
                 x = {d: pulp.LpVariable(f"x_{i}", lowBound=0, upBound=lebar_lahan) for i, d in enumerate(dept_names)}
                 y = {d: pulp.LpVariable(f"y_{i}", lowBound=0, upBound=panjang_lahan) for i, d in enumerate(dept_names)}
                 
@@ -218,8 +229,9 @@ with tab3:
                         z[d1][d2] = {k: pulp.LpVariable(f"z_{i}_{j}_{k}", cat=pulp.LpBinary) for k in range(1, 5)}
                         g[d1][d2] = {k: pulp.LpVariable(f"g_{i}_{j}_{k}", cat=pulp.LpBinary) for k in range(1, 5)}
                 
-                # Big-M Dinamis
+                # Big-M Dinamis yang Proporsional
                 M = (lebar_lahan + panjang_lahan) * 10 
+                
                 arc_dict = {'A': 10, 'E': 5, 'I': 3, 'O': 1, 'U': 0, 'X': 0} 
                 
                 objective_terms = []
@@ -287,10 +299,6 @@ with tab3:
                     val_obj = pulp.value(model.objective)
                     total_momen = float(val_obj) if val_obj is not None else 0.0
                     
-                    # Efisiensi dihitung dengan dasar momen eksisting 65641.5
-                    momen_eksisting = 65641.5
-                    efisiensi = ((momen_eksisting - total_momen) / momen_eksisting) * 100 if total_momen < momen_eksisting else 0.0
-                    
                     m1, m2 = st.columns(2)
                     m1.markdown(f"<div class='metric-box'><div class='metric-title'>Status Solver</div><div class='metric-value' style='color:#059669;'>{status}</div></div>", unsafe_allow_html=True)
                     m2.markdown(f"<div class='metric-box'><div class='metric-title'>Total Momen Perpindahan (Z)</div><div class='metric-value'>{total_momen:,.2f}</div></div>", unsafe_allow_html=True)
@@ -335,35 +343,34 @@ with tab3:
                         st.markdown("</div>", unsafe_allow_html=True)
                     
                     # ==========================================
-                    # PENJELASAN SISTEM PAKAR OTOMATIS (MOCK AI)
+                    # PENJELASAN SISTEM PAKAR OTOMATIS
                     # ==========================================
                     st.divider()
                     st.subheader("🤖 Analisis Cerdas Sistem Pakar (Otomatis)")
                     
-                    # Teks Dinamis Berdasarkan Industri & Efisiensi
                     nama_industri = jenis_industri.split('(')[0].strip()
-                    teks_pakar = f"Halo! Berdasarkan perhitungan rumit optimasi tata letak untuk **{nama_industri}**, berikut adalah penjelasan hasilnya dengan bahasa yang sederhana:\n\n"
+                    teks_pakar = f"Berdasarkan hasil kalkulasi optimasi tata letak untuk **{nama_industri}**, berikut adalah interpretasi hasilnya:\n\n"
                     
-                    teks_pakar += f"**1. Efisiensi Biaya & Tenaga (Total Momen Z = {total_momen:,.2f})**\n"
-                    if efisiensi > 0:
-                        teks_pakar += f"✅ **Sangat Efisien!** Tata letak baru ini terbukti secara matematis mampu memangkas dan menghemat jarak perpindahan material sebesar **{efisiensi:.2f}%** dibandingkan kondisi sebelumnya. Artinya, operator dan alat angkut di pabrik Anda kini akan bekerja jauh lebih ringan dan rute produksi terhindar dari kemacetan (*bottleneck*).\n\n"
+                    teks_pakar += f"**1. Indikator Beban Operasional (Total Momen Z = {total_momen:,.2f})**\n"
+                    if total_momen == 0:
+                        teks_pakar += f"💡 Total momen bernilai 0. Ini berarti aliran material (FTC) yang Anda masukkan masih kosong atau bernilai nol. Silakan isi matriks FTC di Tab 2 untuk mendapatkan kalkulasi biaya pemindahan material.\n\n"
                     else:
-                        teks_pakar += f"ℹ️ Total momen yang dihasilkan adalah {total_momen:,.2f}. Angka ini mengukur seberapa efisien tata letak Anda. Jika Anda ingin mencari rute yang lebih efisien, Anda bisa mencoba mengubah dimensi lahan atau mengevaluasi ulang matriks prioritas di langkah sebelumnya.\n\n"
+                         teks_pakar += f"✅ Algoritma telah meminimalkan jarak perpindahan material antar fasilitas sehingga didapatkan total momen beban terendah sebesar **{total_momen:,.2f}**. Angka ini merepresentasikan kombinasi jarak terpendek dan kelancaran aliran kerja tanpa melanggar batasan ukuran fasilitas.\n\n"
                         
-                    teks_pakar += f"**2. Kepatuhan Pada Jarak Keselamatan / Keamanan ({batas_aman} meter)**\n"
-                    teks_pakar += f"✅ **Aman Terkendali!** Sistem berhasil memastikan bahwa semua area yang Anda beri tanda silang **'X'** (Dilarang Berdekatan) kini telah dipisah dan direntangkan jaraknya minimal sejauh **{batas_aman} meter**. "
+                    teks_pakar += f"**2. Pemenuhan Regulasi Keselamatan ({batas_aman} meter)**\n"
+                    teks_pakar += f"✅ **Standar Terpenuhi!** Mesin MILP berhasil mengalokasikan area yang dilarang berdekatan (kode **'X'** pada tabel ARC) dengan jarak pemisah *rectilinear* minimal **{batas_aman} meter**. "
                     
                     if "Pangan" in jenis_industri:
-                        teks_pakar += "Ini sangat penting untuk memenuhi standar kebersihan GMP, sehingga area kotor seperti gudang mentah tidak akan pernah mencemari area higienis seperti pengemasan.\n\n"
+                        teks_pakar += "Kondisi ini memastikan pabrik mematuhi standar Good Manufacturing Practice (GMP) di mana risiko kontaminasi silang antar zona steril dan zona kotor dapat dicegah secara sistematis.\n\n"
                     elif "Manufaktur" in jenis_industri:
-                        teks_pakar += "Ini memastikan bahwa aturan keselamatan K3 dipatuhi, sehingga area yang bising, panas, atau berbahaya tidak akan mengganggu kenyamanan dan keselamatan area kerja lainnya.\n\n"
+                        teks_pakar += "Kondisi ini memastikan bahwa standar Keselamatan dan Kesehatan Kerja (K3) dipatuhi, sehingga area dengan tingkat risiko/bahaya tinggi (seperti bising, panas, dan getaran) terisolasi dari area kerja lainnya.\n\n"
                     elif "Kesehatan" in jenis_industri:
-                        teks_pakar += "Ini sangat krusial dalam pengendalian infeksi PPI, memastikan bahwa area berisiko tinggi seperti radiasi/infeksius tetap aman dan jauh dari ruang publik.\n\n"
+                        teks_pakar += "Kondisi ini mengamankan prosedur Pencegahan dan Pengendalian Infeksi (PPI) sehingga area berisiko medis, radiasi, atau limbah infeksius berjarak aman dari fasilitas umum.\n\n"
                     else:
-                        teks_pakar += "Jarak batas (Clearance) ini menjamin operasional lantai kerja terhindar dari gangguan antar zona.\n\n"
+                        teks_pakar += "Jarak *clearance* ini mengamankan operasional fasilitas Anda dari intervensi atau gangguan antar departemen.\n\n"
                         
-                    teks_pakar += "**3. Rekomendasi Langkah Selanjutnya**\n"
-                    teks_pakar += "Gunakan *Tabel Titik Koordinat (X, Y)* di atas sebagai panduan atau denah cetak biru (*blueprint*) nyata untuk merelokasi mesin/ruangan di lapangan. Semua kotak di gambar denah sudah akurat dan sesuai dengan skala batas tanah yang Anda masukkan!"
+                    teks_pakar += "**3. Tindak Lanjut Rekomendasi**\n"
+                    teks_pakar += "Denah visualisasi (*Block Layout*) dan tabel koordinat (X, Y) di atas adalah cetak biru (*blueprint*) presisi. Anda dapat menggunakannya sebagai acuan mutlak untuk merelokasi dan menata ulang posisi fasilitas di lapangan."
                     
                     st.info(teks_pakar)
                         
