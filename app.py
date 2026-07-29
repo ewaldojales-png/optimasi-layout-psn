@@ -20,11 +20,11 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🏭 Sistem Pendukung Keputusan: Optimasi Tata Letak Fasilitas")
-st.markdown("Implementasi *Mixed Integer Linear Programming* (MILP) - Dengan Analisis Sistem Pakar Otomatis")
+st.markdown("Implementasi *Mixed Integer Linear Programming* (MILP) - Standar LINGO")
 st.divider()
 
 # ==========================================
-# 2. INISIALISASI DATA DEFAULT (KOSONG / MANUAL)
+# 2. INISIALISASI DATA DEFAULT (KOSONG)
 # ==========================================
 if "df_dimensi" not in st.session_state:
     st.session_state.df_dimensi = pd.DataFrame([
@@ -35,13 +35,13 @@ if "df_dimensi" not in st.session_state:
 # ==========================================
 # 3. NAVIGASI TABS
 # ==========================================
-tab1, tab2, tab3 = st.tabs(["📊 1. Master Dimensi & Parameter", "🔀 2. Matriks Relasi", "🚀 3. Eksekusi Optimasi"])
+tab1, tab2, tab3 = st.tabs(["📊 1. Master Dimensi & Parameter", "🔀 2. Matriks Jarak (Eksisting)", "🚀 3. Eksekusi Optimasi"])
 
 with tab1:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.subheader("A. Pengaturan Standar Industri")
     jenis_industri = st.selectbox(
-        "Pilih Jenis Industri & Standar Keselamatan yang Digunakan:",
+        "Pilih Jenis Industri & Standar Keselamatan:",
         [
             "🍲 Industri Pangan & Farmasi (Standar GMP / HACCP)",
             "🏭 Manufaktur Umum & Kimia (Standar K3 / ISO 45001)",
@@ -53,7 +53,6 @@ with tab1:
 
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.subheader("B. Master Fasilitas & Dimensi")
-    st.info("💡 **FITUR TAMBAH/HAPUS:** Arahkan kursor ke baris paling bawah tabel untuk memunculkan tombol `+` (Tambah Baris). Ketik manual data Anda.")
     
     edited_df = st.data_editor(
         st.session_state.df_dimensi, 
@@ -62,7 +61,10 @@ with tab1:
             "P (m)": st.column_config.NumberColumn("P (m)", min_value=0.0, format="%.2f"),
             "L (m)": st.column_config.NumberColumn("L (m)", min_value=0.0, format="%.2f")
         },
-        num_rows="dynamic", use_container_width=True, hide_index=True, key="editor_dimensi"
+        num_rows="dynamic", 
+        use_container_width=True, 
+        hide_index=True,
+        key="editor_dimensi"
     )
     
     dept_names = []
@@ -70,7 +72,6 @@ with tab1:
         name = str(n).strip()
         if name != "" and name not in dept_names:
             dept_names.append(name)
-            
     st.markdown("</div>", unsafe_allow_html=True)
     
     st.markdown("<div class='card'>", unsafe_allow_html=True)
@@ -98,67 +99,103 @@ with tab1:
     st.markdown("</div>", unsafe_allow_html=True)
 
 with tab2:
-    st.markdown("### Sinkronisasi Matriks Otomatis")
+    st.markdown("### Sinkronisasi Matriks Input (Anti-Glitch HP)")
+    st.caption("Tabel ini telah dikunci formatnya. Sentuhan tidak akan merusak urutan ruangan.")
     
-    if "base_arc" not in st.session_state:
-        st.session_state.base_arc = pd.DataFrame('U', index=dept_names, columns=dept_names)
-    if "base_ftc" not in st.session_state:
-        st.session_state.base_ftc = pd.DataFrame(0.0, index=dept_names, columns=dept_names)
-
-    if "prev_dept_names" not in st.session_state or st.session_state.prev_dept_names != dept_names:
-        if "last_arc" in st.session_state:
-            st.session_state.base_arc = st.session_state.last_arc.reindex(index=dept_names, columns=dept_names, fill_value='U')
+    # LOGIKA REINDEX ANTI-GLITCH STREAMLIT MOBILE
+    if "prev_dept_names" not in st.session_state:
+        st.session_state.prev_dept_names = []
+        
+    if st.session_state.prev_dept_names != dept_names:
+        # UPDATE ARC
+        if "last_arc" in st.session_state and "Fasilitas" in st.session_state.last_arc.columns:
+            old_arc = st.session_state.last_arc.set_index("Fasilitas")
         else:
-            st.session_state.base_arc = st.session_state.base_arc.reindex(index=dept_names, columns=dept_names, fill_value='U')
-            
-        if "last_ftc" in st.session_state:
-            st.session_state.base_ftc = st.session_state.last_ftc.reindex(index=dept_names, columns=dept_names, fill_value=0.0)
+            old_arc = pd.DataFrame('U', index=st.session_state.prev_dept_names, columns=st.session_state.prev_dept_names)
+        
+        old_arc.index.name = None
+        new_arc = old_arc.reindex(index=dept_names, columns=dept_names, fill_value='U')
+        new_arc.insert(0, "Fasilitas", new_arc.index)
+        new_arc.reset_index(drop=True, inplace=True)
+        st.session_state.base_arc = new_arc
+        
+        # UPDATE FTC
+        if "last_ftc" in st.session_state and "Fasilitas" in st.session_state.last_ftc.columns:
+            old_ftc = st.session_state.last_ftc.set_index("Fasilitas")
         else:
-            st.session_state.base_ftc = st.session_state.base_ftc.reindex(index=dept_names, columns=dept_names, fill_value=0.0)
-            
+            old_ftc = pd.DataFrame(0.0, index=st.session_state.prev_dept_names, columns=st.session_state.prev_dept_names)
+        
+        old_ftc.index.name = None
+        new_ftc = old_ftc.reindex(index=dept_names, columns=dept_names, fill_value=0.0)
+        new_ftc.insert(0, "Fasilitas", new_ftc.index)
+        new_ftc.reset_index(drop=True, inplace=True)
+        st.session_state.base_ftc = new_ftc
+        
         st.session_state.prev_dept_names = dept_names
     
     col_kiri, col_kanan = st.columns(2)
+    
     with col_kiri:
         st.markdown("<div class='card'>", unsafe_allow_html=True)
         st.subheader("Matriks ARC (Kualitatif)")
-        st.markdown("""<div style="font-size:13px; color:#6B7280;">Masukkan kode A, E, I, O, U, atau X. Kode <b>X</b> akan memicu batas jarak mutlak keamanan.</div>""", unsafe_allow_html=True)
+        st.caption("Masukkan kode X untuk ruangan yang dilarang berdekatan (contoh: Area Kotor vs Steril).")
         
         if len(dept_names) > 0:
-            edited_arc = st.data_editor(st.session_state.base_arc, use_container_width=True, key="editor_arc")
+            edited_arc = st.data_editor(
+                st.session_state.base_arc, 
+                use_container_width=True, 
+                key="editor_arc",
+                hide_index=True,
+                column_order=["Fasilitas"] + dept_names,
+                column_config={"Fasilitas": st.column_config.TextColumn("Fasilitas", disabled=True)}
+            )
             st.session_state.last_arc = edited_arc
+        else:
+            st.info("Isi tabel Master Dimensi di Tab 1 terlebih dahulu.")
         st.markdown("</div>", unsafe_allow_html=True)
         
     with col_kanan:
         st.markdown("<div class='card'>", unsafe_allow_html=True)
-        st.subheader("Matriks Jarak Eksisting (m)")
-        st.markdown("""<div style="font-size:13px; color:#B45309; font-weight:bold; background:#FEF3C7; padding:8px; border-radius:5px;">
-        Masukkan JARAK LAMA antar fasilitas (contoh: 13, 22). Angka ini akan digunakan untuk menghitung Momen Eksisting.
-        </div>""", unsafe_allow_html=True)
+        st.subheader("Matriks Jarak (Kondisi Eksisting)")
+        st.markdown("""
+        <div style="font-size: 13px; margin-bottom: 12px; padding: 12px; background-color: #F8FAFC; border-left: 4px solid #F59E0B; border-radius: 5px;">
+            <b>Panduan Input Data:</b><br>
+            Ketik <b>Jarak Eksisting (dalam meter)</b> seperti angka 13, 10, atau 22 pada rute yang dilalui material. 
+            Sistem akan otomatis menghitung Total Momen Eksisting dan mengoptimalkannya!
+        </div>
+        """, unsafe_allow_html=True)
         
         if len(dept_names) > 0:
-            edited_ftc = st.data_editor(st.session_state.base_ftc, use_container_width=True, key="editor_ftc")
+            edited_ftc = st.data_editor(
+                st.session_state.base_ftc, 
+                use_container_width=True, 
+                key="editor_ftc",
+                hide_index=True,
+                column_order=["Fasilitas"] + dept_names,
+                column_config={"Fasilitas": st.column_config.TextColumn("Fasilitas", disabled=True)}
+            )
             st.session_state.last_ftc = edited_ftc
+        else:
+            st.info("Isi tabel Master Dimensi di Tab 1 terlebih dahulu.")
         st.markdown("</div>", unsafe_allow_html=True)
 
 with tab3:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.subheader("⚙️ Parameter Solver & Batas Area")
+    st.subheader("⚙️ Parameter Batas Lahan")
     cc1, cc2, cc3 = st.columns(3)
     lebar_lahan = cc1.number_input("Lebar Lahan (Sumbu X) - m", value=100.0)
     panjang_lahan = cc2.number_input("Panjang Lahan (Sumbu Y) - m", value=100.0)
-    batas_aman = cc3.number_input("Jarak Keamanan Mutlak ('X') - m", value=15.0)
+    batas_aman = cc3.number_input("Jarak Aman (Kode X) - m", value=15.0)
     st.markdown("</div>", unsafe_allow_html=True)
     
     if st.button("🚀 JALANKAN OPTIMASI MILP", type="primary", use_container_width=True):
         if len(dept_names) < 2:
-            st.error("Masukkan minimal 2 fasilitas di Tab 1.")
+            st.error("Masukkan minimal 2 fasilitas pada tabel Dimensi.")
         else:
-            with st.spinner("Solver sedang memproses koordinat global optimum..."):
+            with st.spinner("Menghitung model matematis dan total momen eksisting..."):
                 model = pulp.LpProblem("Layout_Optimization", pulp.LpMinimize)
                 
-                W = {}
-                H = {}
+                W, H = {}, {}
                 for _, row in edited_df.iterrows():
                     nm = str(row["Fasilitas"]).strip()
                     if nm in dept_names:
@@ -179,26 +216,28 @@ with tab3:
                 
                 M = (lebar_lahan + panjang_lahan) * 10 
                 
+                # Ubah kembali format tabel untuk proses kalkulasi
+                calc_ftc = edited_ftc.set_index("Fasilitas")
+                calc_arc = edited_arc.set_index("Fasilitas")
+                
+                momen_eksisting = 0.0
                 objective_terms = []
-                momen_eksisting_kalkulasi = 0.0
                 
                 for i in dept_names:
                     for j in dept_names:
                         if i != j:
                             try:
-                                # Mengambil JARAK LAMA yang diinputkan user di matriks kanan
-                                jarak_lama = float(edited_ftc.loc[i, j])
+                                jarak_lama = float(calc_ftc.loc[i, j])
                             except:
                                 jarak_lama = 0.0
                                 
+                            # Jika Anda memasukkan angka jarak lama, berarti rute tersebut terhubung!
                             if jarak_lama > 0:
-                                # 1. MENGHITUNG MOMEN EKSISTING (Otomatis dari input user)
-                                # Rumus: Jarak Lama x Flow
-                                momen_eksisting_kalkulasi += (jarak_lama * expected_flow)
-                                
-                                # 2. MENGHITUNG FUNGSI TUJUAN MILP (Jarak Baru x Flow)
-                                # Jarak lama TIDAK DIKALIKAN lagi di sini untuk menghindari ledakan angka
-                                objective_terms.append(expected_flow * (dx[i][j] + dy[i][j]))
+                                aliran = expected_flow
+                                # Hitung total Momen Lama
+                                momen_eksisting += aliran * jarak_lama
+                                # Masukkan ke Mesin Pencari untuk mencari Jarak Baru (dx + dy)
+                                objective_terms.append(aliran * (dx[i][j] + dy[i][j]))
                                 
                 model += pulp.lpSum(objective_terms)
                 
@@ -224,8 +263,8 @@ with tab3:
                             model += y[i] - H[i]/2 >= y[j] + H[j]/2 - M * (1 - z[i][j][4])
                             model += z[i][j][1] + z[i][j][2] + z[i][j][3] + z[i][j][4] >= 1
                             
-                            kode1 = str(edited_arc.loc[i, j]).strip().upper()
-                            kode2 = str(edited_arc.loc[j, i]).strip().upper()
+                            kode1 = str(calc_arc.loc[i, j]).strip().upper()
+                            kode2 = str(calc_arc.loc[j, i]).strip().upper()
                             if kode1 == 'X' or kode2 == 'X':
                                 model += (x[i] - x[j]) + (y[i] - y[j]) >= batas_aman - M * (1 - g[i][j][1])
                                 model += (x[i] - x[j]) - (y[i] - y[j]) >= batas_aman - M * (1 - g[i][j][2])
@@ -237,18 +276,16 @@ with tab3:
                 status = pulp.LpStatus[model.status]
                 
                 if status == 'Optimal' or status == 'Feasible':
-                    st.success(f"🎉 Solusi Optimum Ditemukan! Seluruh kendala jarak {batas_aman}m terpenuhi.")
+                    st.success("🎉 Solusi Optimum Ditemukan!")
                     
                     val_obj = pulp.value(model.objective)
-                    total_momen_usulan = float(val_obj) if val_obj is not None else 0.0
-                    
-                    # Menghitung efisiensi secara real-time berdasarkan input user
-                    efisiensi = ((momen_eksisting_kalkulasi - total_momen_usulan) / momen_eksisting_kalkulasi) * 100 if momen_eksisting_kalkulasi > 0 and total_momen_usulan < momen_eksisting_kalkulasi else 0.0
+                    total_momen = float(val_obj) if val_obj is not None else 0.0
+                    efisiensi = ((momen_eksisting - total_momen) / momen_eksisting) * 100 if momen_eksisting > 0 else 0.0
                     
                     m1, m2, m3 = st.columns(3)
-                    m1.markdown(f"<div class='metric-box'><div class='metric-title'>Momen Eksisting Lama</div><div class='metric-value' style='color:#DC2626;'>{momen_eksisting_kalkulasi:,.2f}</div></div>", unsafe_allow_html=True)
-                    m2.markdown(f"<div class='metric-box'><div class='metric-title'>Momen Usulan (Z)</div><div class='metric-value' style='color:#059669;'>{total_momen_usulan:,.2f}</div></div>", unsafe_allow_html=True)
-                    m3.markdown(f"<div class='metric-box'><div class='metric-title'>Efisiensi Tata Letak</div><div class='metric-value' style='color:#2563EB;'>{efisiensi:.2f}%</div></div>", unsafe_allow_html=True)
+                    m1.markdown(f"<div class='metric-box'><div class='metric-title'>Momen Eksisting Lama</div><div class='metric-value' style='color:#DC2626;'>{momen_eksisting:,.2f}</div></div>", unsafe_allow_html=True)
+                    m2.markdown(f"<div class='metric-box'><div class='metric-title'>Momen Usulan LINGO (Z)</div><div class='metric-value' style='color:#059669;'>{total_momen:,.2f}</div></div>", unsafe_allow_html=True)
+                    m3.markdown(f"<div class='metric-box'><div class='metric-title'>Persentase Efisiensi</div><div class='metric-value' style='color:#2563EB;'>{efisiensi:.2f}%</div></div>", unsafe_allow_html=True)
                     st.markdown("<br>", unsafe_allow_html=True)
                     
                     col_vis, col_text = st.columns([3, 2])
@@ -267,7 +304,7 @@ with tab3:
                             w, h = W[d], H[d]
                             bx, by = cx - w/2, cy - h/2
                             
-                            koordinat_data.append({"Fasilitas/Departemen": d, "X": round(cx,2), "Y": round(cy,2)})
+                            koordinat_data.append({"Fasilitas": d, "X": round(cx,2), "Y": round(cy,2)})
                             color = colors[idx % len(colors)]
                             
                             rect = patches.Rectangle((bx, by), w, h, linewidth=1.5, edgecolor='#334155', facecolor=color, alpha=0.9)
@@ -278,7 +315,6 @@ with tab3:
                         ax.set_ylim(-2, panjang_lahan + 2)
                         ax.set_xlabel("Sumbu X (meter)"); ax.set_ylabel("Sumbu Y (meter)")
                         ax.grid(True, linestyle=':', alpha=0.6)
-                        
                         st.pyplot(fig)
                         st.markdown("</div>", unsafe_allow_html=True)
                         
@@ -287,6 +323,5 @@ with tab3:
                         st.subheader("📋 Titik Koordinat Pusat (X, Y)")
                         st.dataframe(pd.DataFrame(koordinat_data), hide_index=True, use_container_width=True)
                         st.markdown("</div>", unsafe_allow_html=True)
-                        
                 else:
                     st.error(f"❌ Solusi tidak ditemukan (Infeasible). Perbesar ukuran lahan.")
