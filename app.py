@@ -197,7 +197,7 @@ with tab3:
     elif "Kesehatan" in jenis_industri:
         label_jarak = "Jarak Isolasi Medis (PPI) - m"
         
-    batas_aman = cc3.number_input(label_jarak, value=5.0)
+    batas_aman = cc3.number_input(label_jarak, value=15.0)
     st.markdown("</div>", unsafe_allow_html=True)
     
     if st.button("🚀 JALANKAN OPTIMASI MILP", type="primary", use_container_width=True):
@@ -228,7 +228,6 @@ with tab3:
                         g[d1][d2] = {k: pulp.LpVariable(f"g_{i}_{j}_{k}", cat=pulp.LpBinary) for k in range(1, 5)}
                 
                 M = (lebar_lahan + panjang_lahan) * 10 
-                arc_dict = {'A': 10, 'E': 5, 'I': 3, 'O': 1, 'U': 0, 'X': 0} 
                 
                 objective_terms = []
                 for i in dept_names:
@@ -240,11 +239,10 @@ with tab3:
                                 ftc_val = 0.0
                                 
                             aliran = ftc_val * expected_flow
-                            kode_arc = str(edited_arc.loc[i, j]).strip().upper()
-                            bobot_arc = arc_dict.get(kode_arc, 0)
                             
-                            if aliran > 0 or bobot_arc > 0:
-                                objective_terms.append((aliran + bobot_arc) * (dx[i][j] + dy[i][j]))
+                            # MENYAMAKAN RUMUS DENGAN LINGO DI SKRIPSI (Hanya Flow x Jarak)
+                            if aliran > 0:
+                                objective_terms.append(aliran * (dx[i][j] + dy[i][j]))
                                 
                 model += pulp.lpSum(objective_terms)
                 
